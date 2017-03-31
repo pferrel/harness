@@ -21,21 +21,16 @@ import cats.data.Validated
 import cats.data.Validated.{Invalid, Valid}
 import com.actionml.core.storage.Mongo
 import com.actionml.core.template.{Dataset, Event}
-import com.actionml.core.validate.{MissingParams, ParseError, ValidateError, WrongParams}
-import com.actionml.core.storage.{Mongo, Store}
-import com.actionml.core.template.{Event, Dataset}
-import akka.http.scaladsl.model._
-import org.json4s.ext.JodaTimeSerializers
-import org.json4s.jackson.JsonMethods._
-import org.joda.time.DateTime
-import org.json4s.{MappingException, DefaultFormats, Formats}
-import com.mongodb.casbah.Imports.ObjectId
+import com.actionml.core.validate._
 import com.mongodb.casbah.Imports._
 import com.mongodb.casbah.commons.conversions.scala._
+import com.typesafe.config.ConfigFactory
 import org.joda.time.DateTime
 import org.json4s.ext.JodaTimeSerializers
 import org.json4s.jackson.JsonMethods._
-import org.json4s.{DefaultFormats, MappingException}
+import org.json4s.{DefaultFormats, Formats, MappingException}
+
+import scala.language.reflectiveCalls
 
 /** DAO for the Contextual Bandit input data
   * There are 2 types of input events for the CB 1) usage events and 2) property change events. The usage events
@@ -55,9 +50,10 @@ import org.json4s.{DefaultFormats, MappingException}
   *
   * @param resourceId REST resource-id from POST /datasets/<resource-id> also ids the mongo table for all input
   */
-class CBDataset(resourceId: String) extends Dataset[CBEvent](resourceId) {
+class CBDataset(resourceId: String = "test-resource") extends Dataset[CBEvent](resourceId) {
 
-  lazy val store = new Mongo(m = "localhost", p = 27017, n = resourceId)
+  private lazy val config = ConfigFactory.load()
+  lazy val store = new Mongo(m = config.getString("mongo.host"), p = config.getInt("mongo.port"), n = resourceId)
   // Todo: need to get port from CLI or config
 
   object CBCollections {
@@ -66,7 +62,7 @@ class CBDataset(resourceId: String) extends Dataset[CBEvent](resourceId) {
     val groups: MongoCollection = store.client.getDB(resourceId).getCollection("groups").asScala
   }
 
-  implicit val formats = DefaultFormats  ++ JodaTimeSerializers.all //needed for json4s parsing
+  implicit val formats: Formats = DefaultFormats ++ JodaTimeSerializers.all //needed for json4s parsing
   RegisterJodaTimeConversionHelpers() // registers Joda time conversions used to serialize objects to Mongo
 
   // These should only be called from trusted source like the CLI!
@@ -81,32 +77,42 @@ class CBDataset(resourceId: String) extends Dataset[CBEvent](resourceId) {
   }
 
   // add one json, possibly an CBEvent, to the beginning of the dataset
-  def input(json: String): Validated[ValidateError, Boolean] = {
+  def input(json: String): Validated[ValidateError, CBEvent] = {
     parseAndValidateInput(json).andThen(persist)
-    // kappa train is controlled by the engine, do nothing here
   }
 
-  def persist(event: CBEvent): Validated[ValidateError, Boolean] = {
+
+  def persist(event: CBEvent): Validated[ValidateError, CBEvent] = {
     try {
       event match {
         case event: CBUsageEvent => // usage data, kept as a stream
-          logger.debug(s"Dataset: ${resourceId} persisting a usage event: ${event}")
-          // input to usageEvents collection
-          // Todo: validate fields first
-          val eventObj = MongoDBObject(
-            "user-id" -> event.entityId,
-            "event-name" -> event.event,
-            "item" -> event.targetEntityId,
-            "group" -> event.properties.testGroupId,
-            "converted" -> event.properties.converted,
-            "eventTime" -> new DateTime(event.eventTime)) //sort by this
+          if ( store.client.getDB(resourceId).collectionNames().contains(event.properties.testGroupId) ) {
+            logger.debug(s"Dataset: $resourceId persisting a usage event: $event")
+            // input to usageEvents collection
+            // Todo: validate fields first
+            val eventObj = MongoDBObject(
+              "user-id" -> event.entityId,
+              "event-name" -> event.event,
+              "item" -> event.targetEntityId,
+              "group" -> event.properties.testGroupId,
+              "converted" -> event.properties.converted,
+              "eventTime" -> new DateTime(event.eventTime)) //sort by this
 
-          // keep each event stream in it's own collection
-          CBCollections.usageEventGroups(event.properties.testGroupId).insert(eventObj)
-          Valid(true)
+            // keep each event stream in it's own collection
+            CBCollections.usageEventGroups.get(event.properties.testGroupId) match {
+              case Some(collection) ⇒ collection.insert(eventObj)
+              case None ⇒ logger.warn("Collection for group '{}' not found!", event.properties.testGroupId)
+            }
+            Valid(event)
+          } else {
+            logger.warn(s"Data sent for non-existent group: ${event.properties.testGroupId} will be ignored")
+            Invalid(EventOutOfSequence(s"Data sent for non-existent group: ${event.properties.testGroupId}" +
+              s" will be ignored"))
+          }
+
 
         case event: CBUserUpdateEvent => // user profile update, modifies use object
-          logger.debug(s"Dataset: ${resourceId} persisting a User Profile Update Event: ${event}")
+          logger.debug(s"Dataset: $resourceId persisting a User Profile Update Event: $event")
           // input to usageEvents collection
           // Todo: validate fields first
           if (event.properties.nonEmpty) {
@@ -119,7 +125,7 @@ class CBDataset(resourceId: String) extends Dataset[CBEvent](resourceId) {
             builder += "eventTime" -> new DateTime(event.eventTime)
             val eventObj = builder.result
             CBCollections.users.update(query, eventObj, true, false) // upsert true
-            Valid(true)
+            Valid(event)
 
           } else {
             // no properties so ignore
@@ -146,7 +152,7 @@ class CBDataset(resourceId: String) extends Dataset[CBEvent](resourceId) {
           builder += "eventTime" -> new DateTime(event.eventTime)
           val eventObj = builder.result
           CBCollections.groups.update(query, eventObj, true, false) // upsert true
-          Valid(true)
+          Valid(event)
 
         case event: CBUserUnsetEvent => // unset a property in a user profile
           logger.trace(s"Dataset: ${resourceId} persisting a User Profile Unset Event: ${event}")
@@ -154,19 +160,25 @@ class CBDataset(resourceId: String) extends Dataset[CBEvent](resourceId) {
           val unsetPropNames = event.properties.get.keys.toArray
 
           CBCollections.users.update(MongoDBObject("userId" -> event.entityId), $unset(unsetPropNames: _*), true)
-          Valid(true)
+          Valid(event)
 
         case event: CBDeleteEvent => // remove an object, Todo: for a group, will trigger model removal in the Engine
           event.entityType match {
             case "user" =>
               logger.trace(s"Dataset: ${resourceId} persisting a User Delete Event: ${event}")
               CBCollections.users.findAndRemove(MongoDBObject("userId" -> event.entityId))
-              Valid(true)
+              Valid(event)
             case "group" | "testGroup" =>
-              logger.trace(s"Dataset: ${resourceId} persisting a Group Delete Event: ${event}")
-              CBCollections.groups.findAndRemove(MongoDBObject("groupId" -> event.entityId))
-              store.client.getDB(resourceId).getCollection(event.entityId).drop() // remove all events
-              Valid(true)
+              if ( store.client.getDB(resourceId).collectionNames().contains(event.entityId) ) {
+                logger.trace(s"Dataset: ${resourceId} persisting a Group Delete Event: ${event}")
+                CBCollections.groups.findAndRemove(MongoDBObject("groupId" -> event.entityId))
+                store.client.getDB(resourceId).getCollection(event.entityId).drop() // remove all events
+                logger.trace(s"Deleting group ${event.entityId}.")
+                Valid(event)
+              } else {
+                logger.warn(s"Deleting non-existent group may be an error, operation ignored.")
+                Invalid(ParseError(s"Deleting non-existent group may be an error, operation ignored."))
+              }
           }
         case _ =>
           logger.warn(s"Unrecognized event: ${event} will be ignored")
@@ -178,7 +190,7 @@ class CBDataset(resourceId: String) extends Dataset[CBEvent](resourceId) {
         Invalid(ParseError(s"ISO 8601 Datetime parsing error ignoring input: ${event}"))
       case e: Exception =>
         logger.error(s"Unknown Exception: Beware! trying to recover by ignoring input: ${event}", e)
-        Invalid(ParseError(s"Unknown Exception: Beware! trying to recover by ignoring input: ${event}"))
+        Invalid(ParseError(s"Unknown Exception: Beware! trying to recover by ignoring input: ${event}, ${e.getMessage}"))
     }
   }
 
@@ -257,7 +269,7 @@ class CBDataset(resourceId: String) extends Dataset[CBEvent](resourceId) {
  */
 case class CBUserUpdateEvent(
   entityId: String,
-  // Todo:!!! this is teh way they should be encoded, fix when we get good JSON
+  // Todo:!!! this is the way they should be encoded, fix when we get good JSON
   properties: Option[Map[String, Seq[String]]] = None,
   //properties: Option[Map[String, String]],
   eventTime: String)

@@ -18,22 +18,15 @@
 //package com.actionml.templates.cb
 
 // driver for running Contextual Bandit as an early scaffold
-import com.actionml.core.storage.Mongo
-import com.actionml.core.template.Dataset
-import akka.http.scaladsl.model._
-import com.actionml.templates.cb._
+import cats.data.Validated.{Invalid, Valid}
+import com.actionml.templates.cb.{CBDataset, CBEngine, CBEngineParams}
+import com.typesafe.scalalogging.LazyLogging
 import org.json4s._
 import org.json4s.jackson.JsonMethods._
 import scaldi.akka.AkkaInjectable
-import java.io.{FileInputStream, FileOutputStream, ObjectInputStream, ObjectOutputStream}
-import java.nio.file.{Files, Paths}
-
-import cats.data.Validated.{Invalid, Valid}
-import com.typesafe.scalalogging.LazyLogging
+import scopt._
 
 import scala.io.Source
-
-import scopt._
 
 case class CBCmdLineDriverConfig(
   modelOut: String = "", // db for model
@@ -104,20 +97,14 @@ object CBCmdLineDriver extends App with AkkaInjectable with LazyLogging{
         case Invalid(_) ⇒ errors += 1
       }
       total +=1
-
     }
-    engine.train() // get any remaining events
 
     logger.info(s"Processed ${total} events, ${errors} were bad in some way")
-    // training happens automatically for Kappa style with each input or at short intervals
-
-    // engine.train() should be triggered explicitly for Lambda
 
     val query = """{"user": "pferrel", "group":"group 1" }"""
     engine.query(query) match {
       case Valid(result) ⇒ logger.info(s"Queried and received variant: ${result.variant} groupId: ${result.groupId}")
       case Invalid(error) ⇒ logger.error("Query error {}",error)
     }
-//    println(s"Queried and received variant: ${result.variant} groupId: ${result.groupId} status: ${status}")
   }
 }

@@ -15,25 +15,27 @@
  * limitations under the License.
  */
 
-package com.actionml;
+package com.actionml.core.template
 
-import akka.http.javadsl.model.Uri;
-import akka.japi.Pair;
-import com.google.gson.JsonElement;
+import cats.data.Validated
+import com.actionml.core.storage.Store
+import com.actionml.core.validate.ValidateError
+import com.typesafe.scalalogging.LazyLogging
 
-import java.util.concurrent.CompletionStage;
+abstract class Dataset[T](r: String) extends LazyLogging {
 
-/**
- * Created by semen on 01.03.17.
- */
-public class QueryClient extends RestClient {
+  val resourceId: String = r
+  val store: Store
 
-    public QueryClient(String engineId, String host, Integer port) {
-        super(host, port, Uri.create("/engines").addPathSegment(engineId).addPathSegment("queries"));
-    }
+  def create(): Dataset[T]
+  def destroy(): Dataset[T]
+  def persist(datum: T): Validated[ValidateError, Event]
+  // todo: we may want to use some operators overloading if this fits some Scala idiom well
+  // takes one json, possibly an Event, returns HTTP Status code 200 or 400 (failure to parse or validate)
+  def input(datum: String): Validated[ValidateError, Event]
 
-    public CompletionStage<Pair<Integer, String>> sendQuery(String query) {
-        return this.create(query);
-    }
+  def parseAndValidateInput(s: String): Validated[ValidateError, T]
 
 }
+
+trait Event

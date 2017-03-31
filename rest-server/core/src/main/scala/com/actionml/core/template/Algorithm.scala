@@ -17,25 +17,14 @@
 
 package com.actionml.core.template
 
-import cats.data.Validated
 import com.actionml.core.storage.Store
-import com.actionml.core.validate.ValidateError
 import com.typesafe.scalalogging.LazyLogging
 
-abstract class Dataset[T](r: String) extends LazyLogging {
+class Algorithm(s: Store, p: AlgorithmParams) extends LazyLogging{
 
-  val resourceId = r
-  val store: Store
-
-  def create(): Dataset[T]
-  def destroy(): Dataset[T]
-  def persist(datum: T): Validated[ValidateError, Boolean]
-  // todo: we may want to use some operators overloading if this fits some Scala idiom well
-  // takes one json, possibly an Event, returns HTTP Status code 200 or 400 (failure to parse or validate)
-  def input(datum: String): Validated[ValidateError, Boolean]
-
-  def parseAndValidateInput(s: String): Validated[ValidateError, T]
+  val store: Store = s
+  val params: AlgorithmParams = p
 
 }
 
-trait Event
+trait AlgorithmParams
