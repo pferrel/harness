@@ -22,6 +22,7 @@ import akka.event.Logging
 import com.actionml.core.storage.Mongo
 import com.actionml.core.template.{Algorithm, AlgorithmParams}
 import com.mongodb.casbah.MongoCollection
+import com.typesafe.scalalogging.LazyLogging
 import org.slf4j.event.SubstituteLoggingEvent
 
 import scala.concurrent.Future
@@ -35,7 +36,7 @@ import scala.concurrent.Future
   * @param p All needed params for the CB lib as well as the dataset containing events and data used in training.
   *          The dataset will contain groups from which the GroupTrain Actors are created
   */
-class CBAlgorithm(p: CBAlgoParams) extends Algorithm(new Mongo, p: CBAlgoParams) {
+class CBAlgorithm(p: CBAlgoParams) extends Algorithm(new Mongo, p: CBAlgoParams) with LazyLogging {
 
   private val system = ActorSystem("CBAlgorithm")
 

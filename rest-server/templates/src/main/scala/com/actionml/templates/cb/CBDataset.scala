@@ -86,7 +86,9 @@ class CBDataset(resourceId: String = "test-resource") extends Dataset[CBEvent](r
     try {
       event match {
         case event: CBUsageEvent => // usage data, kept as a stream
-          if ( store.client.getDB(resourceId).collectionNames().contains(event.properties.testGroupId) ) {
+//          if ( store.client.getDB(resourceId).collectionNames().contains(event.properties.testGroupId) ) {\\
+          // db.groups.find({"groupId": "9"}).limit(1).size();
+          if ( CBCollections.groups.find(MongoDBObject("groupId" -> event.properties.testGroupId )).limit(1).size == 1) {
             logger.debug(s"Dataset: $resourceId persisting a usage event: $event")
             // input to usageEvents collection
             // Todo: validate fields first
@@ -107,6 +109,7 @@ class CBDataset(resourceId: String = "test-resource") extends Dataset[CBEvent](r
           } else {
             logger.warn(s"Data sent for non-existent group: ${event.properties.testGroupId} will be ignored")
             Invalid(EventOutOfSequence(s"Data sent for non-existent group: ${event.properties.testGroupId}" +
+//            Invalid(ParseError(s"Data sent for non-existent group: ${event.properties.testGroupId}" +
               s" will be ignored"))
           }
 

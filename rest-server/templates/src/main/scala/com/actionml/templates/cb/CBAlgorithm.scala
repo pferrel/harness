@@ -90,14 +90,14 @@ class CBAlgorithm(p: CBAlgoParams) extends Algorithm(new Mongo, p: CBAlgoParams)
 }
 
 case class CBAlgoParams(
-    dataset: CBDataset, // required, where to get data
-    maxIter: Int = 100, // the rest of these are VW params
-    regParam: Double = 0.0,
-    stepSize: Double = 0.1,
-    bitPrecision: Int = 24,
-    modelName: String = "model.vw",
-    namespace: String = "n",
-    maxClasses: Int = 3)
+  dataset: CBDataset, // required, where to get data
+  maxIter: Int = 100, // the rest of these are VW params
+  regParam: Double = 0.0,
+  stepSize: Double = 0.1,
+  bitPrecision: Int = 24,
+  modelName: String = "model.vw",
+  namespace: String = "n",
+  maxClasses: Int = 3)
   extends AlgorithmParams
 
 
