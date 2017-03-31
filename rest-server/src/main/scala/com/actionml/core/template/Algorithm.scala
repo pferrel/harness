@@ -17,7 +17,7 @@
 
 package com.actionml.core.template
 
-import com.actionml.core.storage.{Store, Mongo}
+import com.actionml.core.storage.Store
 
 class Algorithm(s: Store, p: AlgorithmParams) {
 

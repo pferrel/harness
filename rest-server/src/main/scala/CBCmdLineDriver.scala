@@ -2,7 +2,7 @@
  * Copyright ActionML, LLC under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
+ * ActionML licenses this file to You under the Apache License, Version 2.0
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
  *
@@ -30,8 +30,8 @@ import scala.io.Source
 
 case class CBCmdLineDriverConfig(
   modelOut: String = "", // db for model
-  inputEvents: String = "", // events readFile
-  engineDefJSON: String = ""  // engine.json readFile
+  inputEvents: String = "data/sample-x.json", // events readFile
+  engineDefJSON: String = "engine.json"  // engine.json readFile
 )
 
 object CBCmdLineDriver extends App with AkkaInjectable with LazyLogging{
@@ -43,10 +43,10 @@ object CBCmdLineDriver extends App with AkkaInjectable with LazyLogging{
       opt[String]('m', "model").action((x, c) =>
         c.copy(modelOut = x)).text("Model storage location, eventually from the Engine config")
 
-      opt[String]('d', "dataset").required().action((x, c) =>
+      opt[String]('d', "dataset").action((x, c) =>
         c.copy(inputEvents = x)).text("Event dataset input location, eventually fome the Engine config")
 
-      opt[String]('e', "engine").required().action((x, c) =>
+      opt[String]('e', "engine").action((x, c) =>
         c.copy(engineDefJSON = x)).text("Engine config, JSON readFile now, but eventually from shared key/value store")
 
       help("help").text("prints this usage text")

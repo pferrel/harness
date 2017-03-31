@@ -108,8 +108,8 @@ class CBDataset(resourceId: String = "test-resource") extends Dataset[CBEvent](r
             Valid(event)
           } else {
             logger.warn(s"Data sent for non-existent group: ${event.properties.testGroupId} will be ignored")
-            Invalid(EventOutOfSequence(s"Data sent for non-existent group: ${event.properties.testGroupId}" +
-//            Invalid(ParseError(s"Data sent for non-existent group: ${event.properties.testGroupId}" +
+//            Invalid(EventOutOfSequence(s"Data sent for non-existent group: ${event.properties.testGroupId}" +
+            Invalid(ParseError(s"Data sent for non-existent group: ${event.properties.testGroupId}" +
               s" will be ignored"))
           }
 
